@@ -7,6 +7,7 @@ from torch import nn
 from torch import Tensor 
 from torch.nn import functional as F
 
+from .quantization import quan_Linear, quan_Conv2d
 
 def split_last(x, shape):
     "split the last dimension to given shape"
@@ -28,9 +29,9 @@ class MultiHeadedSelfAttention(nn.Module):
     """Multi-Headed Dot Product Attention"""
     def __init__(self, dim, num_heads, dropout):
         super().__init__()
-        self.proj_q = nn.Linear(dim, dim)
-        self.proj_k = nn.Linear(dim, dim)
-        self.proj_v = nn.Linear(dim, dim)
+        self.proj_q = quan_Linear(dim, dim)
+        self.proj_k = quan_Linear(dim, dim)
+        self.proj_v = quan_Linear(dim, dim)
         self.drop = nn.Dropout(dropout)
         self.n_heads = num_heads
         self.scores = None # for visualization
@@ -62,8 +63,8 @@ class PositionWiseFeedForward(nn.Module):
     """FeedForward Neural Networks for each position"""
     def __init__(self, dim, ff_dim):
         super().__init__()
-        self.fc1 = nn.Linear(dim, ff_dim)
-        self.fc2 = nn.Linear(ff_dim, dim)
+        self.fc1 = quan_Linear(dim, ff_dim)
+        self.fc2 = quan_Linear(ff_dim, dim)
 
     def forward(self, x):
         # (B, S, D) -> (B, S, D_ff) -> (B, S, D)
@@ -75,7 +76,7 @@ class Block(nn.Module):
     def __init__(self, dim, num_heads, ff_dim, dropout):
         super().__init__()
         self.attn = MultiHeadedSelfAttention(dim, num_heads, dropout)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = quan_Linear(dim, dim)
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
         self.pwff = PositionWiseFeedForward(dim, ff_dim)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
