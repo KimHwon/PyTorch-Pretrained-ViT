@@ -55,6 +55,8 @@ class ViT(nn.Module):
         in_channels: int = 3, 
         image_size: Optional[int] = None,
         num_classes: Optional[int] = None,
+        quan_bitwidth: int = 8,
+        quan_reset_weight: bool = False
     ):
         super().__init__()
 
@@ -138,6 +140,9 @@ class ViT(nn.Module):
                 strict=False,
             )
         
+        # Initialize for quantization.
+        self.init_quantization()
+        
     @torch.no_grad()
     def init_weights(self):
         def _init(m):
@@ -150,6 +155,28 @@ class ViT(nn.Module):
         nn.init.constant_(self.fc.bias, 0)
         nn.init.normal_(self.positional_embedding.pos_embedding, std=0.02)  # _trunc_normal(self.positional_embedding.pos_embedding, std=0.02)
         nn.init.constant_(self.class_token, 0)
+    
+    @torch.no_grad()
+    def init_quantization(self):
+        # Configure the quantization bit-width
+        def _reset_bitwidth(m):
+            if isinstance(m, quan_Conv2d) or isinstance(m, quan_Linear):
+                m.N_bits = self.quan_bitwidth
+                m.b_w.data = m.b_w.data[-m.N_bits:]
+                m.b_w[0] = -m.b_w[0]
+        self.apply(_reset_bitwidth)
+        # Update the step_size once the model is loaded. This is used for quantization.
+        def _reset_stepsize(m):
+            if isinstance(m, quan_Conv2d) or isinstance(m, quan_Linear):
+                # simple step size update based on the pretrained model or weight init
+                m.__reset_stepsize__()
+        self.apply(_reset_stepsize)
+        # Block for weight reset.
+        if self.quan_reset_weight:
+            def _reset_weight(m):
+                if isinstance(m, quan_Conv2d) or isinstance(m, quan_Linear):
+                    m.__reset_weight__()
+            self.apply(_reset_weight)
 
     def forward(self, x):
         """Breaks image into patches, applies transformer, applies MLP head.
